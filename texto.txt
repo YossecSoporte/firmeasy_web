@@ -1,0 +1,138 @@
+ {
+    "id": 4,
+    "fileName": "prueba_firmado.pdf",
+    "status": "pending",
+    "codePdf": "e64b02fb-92d2-4919-8b85-2134627b2607",
+    "namePdf": "prueba_firmado",
+    "signatureConfig": {
+      "width": 155,
+      "height": 55,
+      "positionx": 40,
+      "positiony": 630,
+      "pageNumber": 1,
+      "useGraphic": false,
+      "graphic": "https://girasol.pe/favicon.png",
+      "useTsp": false,
+      "tsp": {
+        "url": "http://timestamp.sectigo.com/qualified",
+        "name": null,
+        "password": null
+      },
+      "tspUrl": null
+    }
+   },
+   {
+    "id": 5,
+    "fileName": "pdf_libro.pdf",
+    "status": "pending",
+    "codePdf": "8ebe7192-4239-41fc-9dae-5ef40b747167",
+    "namePdf": "pdf_libro",
+    "signatureConfig": {
+      "width": 155,
+      "height": 55,
+      "positionx": 240,
+      "positiony": 293,
+      "pageNumber": 1,
+      "useGraphic": false,
+      "graphic": "https://girasol.pe/favicon.png",
+      "useTsp": false,
+      "tsp": {
+        "url": "http://timestamp.sectigo.com/qualified",
+        "name": null,
+        "password": null
+      },
+      "tspUrl": null
+    }
+  },
+  {
+    "id": 6,
+    "fileName": "power_point.pdf",
+    "status": "pending",
+    "codePdf": "c41034f1-d875-4f2e-ad8a-38eceed3925b",
+    "namePdf": "power_point",
+    "signatureConfig": {
+      "width": 155,
+      "height": 55,
+      "positionx": 240,
+      "positiony": 293,
+      "pageNumber": 1,
+      "useGraphic": false,
+      "graphic": "https://girasol.pe/favicon.png",
+      "useTsp": false,
+      "tsp": {
+        "url": "http://timestamp.sectigo.com/qualified",
+        "name": null,
+        "password": null
+      },
+      "tspUrl": null
+    }
+  },
+  {
+    "id": 7,
+    "fileName": "pdf_daniado.pdf",
+    "status": "pending",
+    "codePdf": "ff496616-54cc-42ef-a353-acc31fb1884e",
+    "namePdf": "pdf_daniado",
+    "signatureConfig": {
+      "width": 155,
+      "height": 55,
+      "positionx": 240,
+      "positiony": 293,
+      "pageNumber": 1,
+      "useGraphic": false,
+      "graphic": "https://girasol.pe/favicon.png",
+      "useTsp": false,
+      "tsp": {
+        "url": "http://timestamp.sectigo.com/qualified",
+        "name": null,
+        "password": null
+      },
+      "tspUrl": null
+    }
+  },
+  {
+    "id": 8,
+    "fileName": "pdf_sin_cabecera.pdf",
+    "status": "pending",
+    "codePdf": "9ef9de8e-7d35-4c0b-b810-ed9165a7eef3",
+    "namePdf": "pdf_sin_cabecera",
+    "signatureConfig": {
+      "width": 155,
+      "height": 55,
+      "positionx": 240,
+      "positiony": 293,
+      "pageNumber": 1,
+      "useGraphic": false,
+      "graphic": "https://girasol.pe/favicon.png",
+      "useTsp": false,
+      "tsp": {
+        "url": "http://timestamp.sectigo.com/qualified",
+        "name": null,
+        "password": null
+      },
+      "tspUrl": null
+    }
+  },
+  {
+    "id": 9,
+    "fileName": "pdf_contrasenia.pdf",
+    "status": "pending",
+    "codePdf": "03ec0a0d-28ba-405d-9c2f-92ca70074bde",
+    "namePdf": "pdf_contrasenia",
+    "signatureConfig": {
+      "width": 155,
+      "height": 55,
+      "positionx": 240,
+      "positiony": 293,
+      "pageNumber": 1,
+      "useGraphic": false,
+      "graphic": "https://girasol.pe/favicon.png",
+      "useTsp": false,
+      "tsp": {
+        "url": "http://timestamp.sectigo.com/qualified",
+        "name": null,
+        "password": null
+      },
+      "tspUrl": null
+    }
+  }
