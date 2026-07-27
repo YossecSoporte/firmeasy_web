@@ -17,7 +17,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const primerTsp = globalDocuments.find((d) => d.signatureConfig?.useTsp)
           ?.signatureConfig?.tsp?.url;
 
-        let uri = `firmeasyenterprise://?batch_csv=${encodeURIComponent(urlDescarga)}`;
+        let uri = `firmeasy://?batch_csv=${encodeURIComponent(urlDescarga)}`;
         if (primerTsp && primerTsp.trim() !== "") {
           uri += `&tsp=${encodeURIComponent(primerTsp)}`;
         }

@@ -3,20 +3,21 @@ let globalSignedDocs = {};
 
 function getPdfUrlFromCode(codePdf) {
     const map = {
-      'a1f45880-81f4-4e2c-9fed-3c0a098d8cf2': '1p.pdf',
-      'bb59a806-f5f1-44b5-a629-87d5e2f0af76': 'Prueba_firmado.pdf',
-      //'5a5e91a4-c5ce-4cad-8ad9-fdafff8d1148': 'Test_PDF_1.5_-_conversion_Ghostscript.pdf',
-      '031a0d34-9748-421c-a033-4dc71eb68b57': 'Prueva_2.pdf',
-      '14767618-de96-4f5e-ab1d-bb5116a5b251': 'TEST_BENDER.pdf',
-      // "9dba24f5-cc00-47fa-9046-97872f38c8f4": "firmeasy.pdf",
-      // "74e88259-6db1-48fa-87be-5a21e31e8d58": "firmeasy_v1.pdf",
-      // "346db3fb-9c32-4af7-a44e-9aa741699d19": "pdf_contrasenia.pdf",
-      // "8ebe7192-4239-41fc-9dae-5ef40b747167": "pdf_libro.pdf",
-      // "c41034f1-d875-4f2e-ad8a-38eceed3925b": "power_point.pdf",
-      // "ff496616-54cc-42ef-a353-acc31fb1884e": "pdf_daniado.pdf",
-      // "9ef9de8e-7d35-4c0b-b810-ed9165a7eef3": "pdf_sin_cabecera.pdf",
-      // "e64b02fb-92d2-4919-8b85-2134627b2607": "prueba_firmado.pdf",
-      // "950c1b45-ce88-4857-b184-a5e933f7ff35": "pdf_horizontal.pdf",
+        //'a1f45880-81f4-4e2c-9fed-3c0a098d8cf2': '1p.pdf',
+        //'bb59a806-f5f1-44b5-a629-87d5e2f0af76': 'Prueba_firmado.pdf',
+      //   //'5a5e91a4-c5ce-4cad-8ad9-fdafff8d1148': 'Test_PDF_1.5_-_conversion_Ghostscript.pdf',
+       //'031a0d34-9748-421c-a033-4dc71eb68b57': 'Prueva_2.pdf',
+      //'14767618-de96-4f5e-ab1d-bb5116a5b251': 'TEST_BENDER.pdf',
+      //'9dba24f5-cc00-47fa-9046-97872f38c8f4': 'doc_firmado.pdf',
+    //   '74e88259-6db1-48fa-87be-5a21e31e8d58': 'doc_firmado2.pdf',
+       '346db3fb-9c32-4af7-a44e-9aa741699d19': 'doc_firmado3.pdf',
+       '8ebe7192-4239-41fc-9dae-5ef40b747167': 'doc_prueba4.pdf',
+      //'c41034f1-d875-4f2e-ad8a-38eceed3925b': 'pdf_horizontal_vertical_firmado.pdf',
+      //'ff496616-54cc-42ef-a353-acc31fb1884e': 'pdf_horizontal.pdf',
+      //'9ef9de8e-7d35-4c0b-b810-ed9165a7eef3': 'doc_firma_h2.pdf',
+      //'e64b02fb-92d2-4919-8b85-2134627b2607': 'A3-A4.pdf',
+        //"950c1b45-ce88-4857-b184-a5e933f7ff35": "sin_firma.pdf",
+        
       // "03ec0a0d-28ba-405d-9c2f-92ca70074bde": "pdf_contrasenia.pdf"
       // Agrega más códigos y archivos según tus necesidades
     };
@@ -394,7 +395,7 @@ function BtnFirmarDocument(doc) {
             params.set("tlv", 0);
         }
 
-        const uri = 'firmeasyenterprise://?' + params.toString();
+        const uri = 'firmeasy://?' + params.toString();
         const timeout = setTimeout(() => {
             alert("Parece que no tienes instalado el programa de escritorio. Por favor, instálalo para continuar.");
         }, 1500);
