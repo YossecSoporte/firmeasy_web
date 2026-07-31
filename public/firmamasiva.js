@@ -13,14 +13,19 @@ document.addEventListener("DOMContentLoaded", () => {
       const csvContent = generarCSV(firmas);
 
       try {
-        const { urlDescarga } = await guardarCSVEnServidor(csvContent);
-        const primerTsp = globalDocuments.find((d) => d.signatureConfig?.useTsp)
-          ?.signatureConfig?.tsp?.url;
+        const { urlDescarga, csvId } = await guardarCSVEnServidor(csvContent);
 
-        let uri = `firmeasy://?batch_csv=${encodeURIComponent(urlDescarga)}`;
-        if (primerTsp && primerTsp.trim() !== "") {
-          uri += `&tsp=${encodeURIComponent(primerTsp)}`;
+        // Firmar el batch con Ed25519
+        const signResponse = await fetch(`api.php?op=csv_sign&codigo=${csvId}`, { method: 'POST' });
+        const signData = await signResponse.json();
+
+        if (!signData.success || !signData.batch?.signed_uri) {
+          throw new Error('No se pudo firmar el batch CSV');
         }
+
+        // Usar la URI firmada del batch
+        const uri = signData.batch.signed_uri;
+
         window.location.href = uri;
         const userId = UserManager.getUserId();
         globalDocuments.forEach((doc) => {
@@ -29,8 +34,8 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         });
       } catch (err) {
-        console.error("Error al subir CSV:", err);
-        alert("Ocurrió un error al guardar el CSV en el servidor.");
+        console.error("Error al firmar CSV:", err);
+        alert("Ocurrió un error al firmar el batch: " + err.message);
       }
     });
   }
@@ -44,14 +49,14 @@ function prepararFirmasDesdeJSON() {
     if (!cfg.positionx || !cfg.positiony || !cfg.width || !cfg.height) return;
     if (doc.status === "signed") return;
 
-    const code = encodeURIComponent(doc.codePdf);
+    const code = doc.codePdf;
     const tspUrl = cfg.useTsp ? cfg.tsp?.url || "" : "";
     const userId = UserManager.getUserId();
     
     firmas.push({
       fileName: doc.fileName,
       urlDescarga: getPdfUrlFromCode(code),
-      urlSubida: `${BASE_URL}?op=sign_upload&codigo=${code}&user_id=${userId}`,
+      urlSubida: `${BASE_URL}?op=sign_upload&codigo=${encodeURIComponent(code)}&user_id=${userId}`,
       x: cfg.positionx,
       y: cfg.positiony,
       width: cfg.width,
@@ -61,6 +66,7 @@ function prepararFirmasDesdeJSON() {
       page: cfg.pageNumber || DEFAULT_PAGE_NUMBER,
       textSize: DEFAULT_TEXT_SIZE,
       tsp: tspUrl,
+      sha256: doc.sha256 || "",
     });
   });
 
@@ -87,6 +93,7 @@ function generarCSV(firmas) {
         sig.graphic || "",
         sig.page,
         sig.textSize,
+        sig.sha256 || "",
       ].join(",");
     })
     .join("\n");
@@ -121,6 +128,7 @@ async function guardarCSVEnServidor(csvContent) {
     nombreArchivo: `${codigo}.csv`,
     urlDescarga: downloadUrl,
     rutaLocal: `/samplescsv/${codigo}.csv`,
+    csvId: codigo,
   };
 }
 

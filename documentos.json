@@ -44,5 +44,28 @@
         },
         "tspUrl": null
       }
+    },
+    {
+      "id": 3,
+      "fileName": "doc_prueba1.pdf",
+      "status": "pending",
+      "codePdf": "f4a2b8c1-3d5e-4a6f-8b7c-9d0e1f2a3b4c",
+      "namePdf": "doc_prueba1",
+      "signatureConfig": {
+        "width": 155,
+        "height": 55,
+        "positionx": 100,
+        "positiony": 150,
+        "pageNumber": 1,
+        "useGraphic": false,
+        "graphic": "https://girasol.pe/favicon.png",
+        "useTsp": false,
+        "tsp": {
+          "url": "http://timestamp.sectigo.com/qualified",
+          "name": null,
+          "password": null
+        },
+        "tspUrl": null
+      }
     }
-]
+  ]

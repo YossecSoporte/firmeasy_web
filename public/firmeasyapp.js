@@ -12,6 +12,7 @@ function getPdfUrlFromCode(codePdf) {
     //   '74e88259-6db1-48fa-87be-5a21e31e8d58': 'doc_firmado2.pdf',
        '346db3fb-9c32-4af7-a44e-9aa741699d19': 'doc_firmado3.pdf',
        '8ebe7192-4239-41fc-9dae-5ef40b747167': 'doc_prueba4.pdf',
+       'f4a2b8c1-3d5e-4a6f-8b7c-9d0e1f2a3b4c': 'doc_prueba1.pdf',
       //'c41034f1-d875-4f2e-ad8a-38eceed3925b': 'pdf_horizontal_vertical_firmado.pdf',
       //'ff496616-54cc-42ef-a353-acc31fb1884e': 'pdf_horizontal.pdf',
       //'9ef9de8e-7d35-4c0b-b810-ed9165a7eef3': 'doc_firma_h2.pdf',
@@ -27,14 +28,12 @@ function getPdfUrlFromCode(codePdf) {
         throw new Error("No hay PDF asignado para este código.");
     }
 
-    return `https://raw.githubusercontent.com/YossecSoporte/pdf-test/main/${fileName}`;
+    return `https://raw.githubusercontent.com/YossecSoporte/DOC-PDF/main/${fileName}`;
     //return `https://raw.githubusercontent.com/Yossec/pdf-descarga/main/${fileName}`;
 }
 
 
-window.onload = () => {
-    localStorage.clear();
-};
+
 
 document.addEventListener("DOMContentLoaded", async () => {
     globalDocuments = await loadDocuments();
@@ -45,9 +44,39 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 async function loadDocuments() {
     try {
-        const response = await fetch("documentos.json");
-        if (!response.ok) throw new Error("Error al cargar los documentos");
-        return await response.json();
+        const userId = UserManager.getUserId();
+        const [docsResponse, jobsResponse] = await Promise.all([
+            fetch("documentos.json"),
+            fetch(`api.php?op=json_jobs&case=mixed&graphic=true&user_id=${encodeURIComponent(userId)}`)
+        ]);
+        
+        if (!docsResponse.ok) throw new Error("Error al cargar los documentos");
+        
+        const documents = await docsResponse.json();
+        
+        // Obtener signed_uri y sha256 desde json_jobs
+        let signedUris = {};
+        let sha256Map = {};
+        if (jobsResponse.ok) {
+            const jobsData = await jobsResponse.json();
+            if (jobsData.documents) {
+                jobsData.documents.forEach(jobDoc => {
+                    const toUrl = new URL(jobDoc.to, window.location.origin);
+                    const codePdf = toUrl.searchParams.get('codigo');
+                    if (codePdf) {
+                        if (jobDoc.signed_uri) signedUris[codePdf] = jobDoc.signed_uri;
+                        if (jobDoc.sha256) sha256Map[codePdf] = jobDoc.sha256;
+                    }
+                });
+            }
+        }
+        
+        // Agregar signed_uri y sha256 a cada documento
+        return documents.map(doc => ({
+            ...doc,
+            signed_uri: signedUris[doc.codePdf] || null,
+            sha256: sha256Map[doc.codePdf] || null
+        }));
     } catch (error) {
         console.error("Error:", error);
         return [];
@@ -91,13 +120,15 @@ async function generateTableRows() {
     const userId = UserManager.getUserId();
     const userSignedDocs = globalSignedDocs[userId] || [];
     const userName = UserManager.getUserName();
+    const localSignatures = SignatureTracker.getUserSignatures();
 
     globalDocuments.forEach((doc, index) => {
-        // Verificar si el documento está firmado
+        // Verificar si el documento está firmado (servidor O localStorage)
         const signatureEntry = userSignedDocs.find(
             (entry) => entry.code === doc.codePdf
         );
-        const isSigned = !!signatureEntry;
+        const localEntry = localSignatures[doc.id];
+        const isSigned = !!signatureEntry || (localEntry && localEntry.status === "in_progress");
         const rowClass = index % 2 === 0 ? "bg-white" : "bg-slate-25";
 
         // Crear elementos de la fila
@@ -146,13 +177,6 @@ async function generateTableRows() {
                         BtnFirmarDocumentById(doc.id);
                     }
                 }
-            )
-        );
-
-        // ==== Botón Sellar ====
-        tr.appendChild(
-            createActionButton("cyan", "stamp", isSigned, "Sellar", () =>
-                openConfigTsaModal(doc.id)
             )
         );
 
@@ -347,6 +371,36 @@ function BtnFirmarDocument(doc) {
         }
 
         const cfg = doc.signatureConfig || {};
+
+        // Usar signed_uri si existe (viene firmado con Ed25519 desde json_jobs)
+        if (doc.signed_uri) {
+            SignatureTracker.recordSignature(doc.id, {
+                status: "in_progress",
+                documentName: doc.fileName,
+                userId: userId,
+                userName: userName,
+                timestamp: new Date().toISOString(),
+                config: {
+                    position: { x: cfg.positionx, y: cfg.positiony },
+                    size: { width: cfg.width, height: cfg.height },
+                },
+            });
+
+            const uri = doc.signed_uri;
+            const timeout = setTimeout(() => {
+                alert("Parece que no tienes instalado el programa de escritorio. Por favor, instálalo para continuar.");
+            }, 1500);
+
+            window.location.href = uri;
+
+            window.addEventListener("blur", () => {
+                clearTimeout(timeout);
+            });
+            startSignaturePolling(doc.codePdf, userId);
+            return;
+        }
+
+        // Fallback: construir URI manualmente (compatibilidad)
         const params = new URLSearchParams();
         const codigo = encodeURIComponent(doc.codePdf);
 
@@ -389,7 +443,7 @@ function BtnFirmarDocument(doc) {
             if (!cfg.tspUrl || !isValidUrl(cfg.tspUrl)) {
                 throw new Error("URL del archivo CSV de TSP no válida o no configurada");
             }
-            params.set("tsp", cfg.tspUrl); // Aquí se pasa directamente la URL del CSV ya subida
+            params.set("tsp", cfg.tspUrl);
             params.set("tlv", 1);
         } else {
             params.set("tlv", 0);
@@ -404,7 +458,7 @@ function BtnFirmarDocument(doc) {
 
         window.addEventListener("blur", () => {
             clearTimeout(timeout);
-        });   
+        });
         startSignaturePolling(doc.codePdf, userId);
     } catch (error) {
         console.error("Error en BtnFirmarDocument:", error);

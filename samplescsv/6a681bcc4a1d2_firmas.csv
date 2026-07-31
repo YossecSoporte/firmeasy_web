@@ -1,0 +1,2 @@
+https://raw.githubusercontent.com/YossecSoporte/pdf-test/main/doc_firmado3.pdf,http://localhost:8080/api.php?op=sign_upload&codigo=346db3fb-9c32-4af7-a44e-9aa741699d19&user_id=testuser,doc_firmado3.pdf,340,693,155,55,"<SIGNER>\nFecha: <DATE>\nOU: <OU>\nCon FirmaEasy",,1,6,
+https://raw.githubusercontent.com/YossecSoporte/pdf-test/main/doc_prueba4.pdf,http://localhost:8080/api.php?op=sign_upload&codigo=8ebe7192-4239-41fc-9dae-5ef40b747167&user_id=testuser,doc_prueba4.pdf,340,693,155,55,"<SIGNER>\nFecha: <DATE>\nOU: <OU>\nCon FirmaEasy",,1,6,

@@ -1,11 +1,7 @@
 class UserManager {
   static getUserId() {
-    let userId = localStorage.getItem("demoUserId");
-    if (!userId) {
-      userId = `user_${Math.random().toString(36).substring(2, 9)}`;
-      localStorage.setItem("demoUserId", userId);
-    }
-    return userId;
+    // Para testing usamos testuser fijo; en producción usar localStorage
+    return "testuser";
   }
 
   static getUserName() {
@@ -41,4 +37,13 @@ class SignatureTracker {
   static getUserSignatures() {
     return JSON.parse(localStorage.getItem('documentSignatures') || '{}');
   }
+}
+
+// Función para reiniciar la sesión (limpiar localStorage + servidor y recargar)
+async function resetApp() {
+    try {
+        await fetch('api.php?op=reset', { method: 'POST' });
+    } catch (e) {}
+    localStorage.clear();
+    location.reload();
 }

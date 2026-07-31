@@ -83,22 +83,47 @@ if ($method === 'GET' && $op === 'download_signed' && isset($_GET['codigo']) && 
 // GET /api.php?op=sample&codigo=ID
 // ====================================
 if ($method === 'GET' && $op === 'sample' && isset($_GET['codigo'])) {
+    $codigo = $_GET['codigo'];
+
+    // 1. Base de datos hardcodeada (legacy)
     $sampleDb = [
         'abc123' => "$samplesDir/pdfWeb.pdf",
         'd8b5a1f7-24c3-4346-b10c-76033d5c3446' => "$samplesDir/sample2.pdf",
         'abc256' => "$samplesDir/sample3.pdf",
     ];
-    $codigo = $_GET['codigo'];
+
+    // 2. Buscar en documentos.json (documentos reales)
+    $docsFile = __DIR__ . '/documentos.json';
     if (isset($sampleDb[$codigo])) {
         $archivo = $sampleDb[$codigo];
-        if (file_exists($archivo) && is_readable($archivo)) {
-            header('Content-Type: application/pdf');
-            header('Content-Disposition: attachment; filename="' . basename($archivo) . '"');
-            header('Content-Length: ' . filesize($archivo));
-            readfile($archivo);
-            exit;
+    } elseif (file_exists($docsFile)) {
+        $docsData = json_decode(file_get_contents($docsFile), true);
+        if (is_array($docsData)) {
+            foreach ($docsData as $doc) {
+                if (($doc['codePdf'] ?? '') === $codigo) {
+                    $archivo = __DIR__ . '/samples/' . ($doc['fileName'] ?? '');
+                    break;
+                }
+            }
         }
     }
+
+    // 3. Buscar directamente en samples/ por nombre de archivo
+    if (!isset($archivo) || !file_exists($archivo)) {
+        $archivo = __DIR__ . '/samples/' . $codigo . '.pdf';
+        if (!file_exists($archivo)) {
+            $archivo = __DIR__ . '/samples/' . $codigo;
+        }
+    }
+
+    if (isset($archivo) && file_exists($archivo) && is_readable($archivo)) {
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . basename($archivo) . '"');
+        header('Content-Length: ' . filesize($archivo));
+        readfile($archivo);
+        exit;
+    }
+
     http_response_code(404);
     echo json_encode(['error' => 'Archivo de muestra no encontrado']);
     exit;
@@ -225,6 +250,18 @@ if ($method === 'POST' && $op === 'sign_upload' && isset($_GET['codigo']) && iss
     exit;
 }
 
+// ====================================
+// POST /api.php?op=reset
+// Limpia signed_docs.json (estado de firmas)
+// ====================================
+if ($method === 'POST' && $op === 'reset') {
+    $signedDbFile = $baseDir . '/signed_docs.json';
+    file_put_contents($signedDbFile, json_encode([], JSON_PRETTY_PRINT));
+    http_response_code(200);
+    echo json_encode(['success' => true, 'message' => 'Sesión reiniciada']);
+    exit;
+}
+
 
 
 // ====================================
@@ -282,6 +319,71 @@ if ($method === 'GET' && $op === 'csv_download' && isset($_GET['codigo'])) {
     echo json_encode(['error' => 'CSV no encontrado']);
     exit;
 }
+// ====================================
+// POST /api.php?op=csv_sign&codigo=ID
+// Firma Ed25519 el contenido del CSV y retorna batch signature
+// ====================================
+if ($method === 'POST' && $op === 'csv_sign' && isset($_GET['codigo'])) {
+    $codigo = $_GET['codigo'];
+    $key = "csv_$codigo";
+    if (!isset($fakeDb[$key]) || !file_exists($fakeDb[$key])) {
+        http_response_code(404);
+        echo json_encode(['error' => 'CSV no encontrado']);
+        exit;
+    }
+
+    $csvPath = $fakeDb[$key];
+    $csvContent = file_get_contents($csvPath);
+    if ($csvContent === false) {
+        http_response_code(500);
+        echo json_encode(['error' => 'No se pudo leer el CSV']);
+        exit;
+    }
+
+    // SHA-256 del contenido del CSV para firmar
+    $csvHash = hash('sha256', $csvContent);
+
+    // Base URL para download
+    $batchScheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https" : "http";
+    $batchHost = $_SERVER['HTTP_HOST'];
+    $batchBasePath = rtrim(dirname($_SERVER['PHP_SELF']), '/\\');
+    $batchBaseUrl = $batchScheme . "://" . $batchHost . $batchBasePath;
+
+    // Nonce, exp, kid para la firma del batch
+    $batchNonce = bin2hex(random_bytes(16));
+    $batchExp = time() + 30 * 60; // 30 min
+    $batchKid = 'default';
+    $privateKeyPath = __DIR__ . '/signer_keys/private.pem';
+
+    if (!file_exists($privateKeyPath)) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Clave privada no encontrada']);
+        exit;
+    }
+
+    // Firmar con Ed25519
+    $downloadUrl = $batchBaseUrl . "/api.php?op=csv_download&codigo=" . $codigo;
+    $batchParams = [
+        ['batch_csv', $downloadUrl],
+        ['nonce', $batchNonce],
+        ['exp', (string)$batchExp],
+    ];
+    $signResult = signUriWithNode($batchParams, $batchKid, $privateKeyPath);
+
+    http_response_code(200);
+    echo json_encode([
+        'success' => true,
+        'download_url' => $downloadUrl,
+        'batch' => [
+            'csv_hash' => $csvHash,
+            'nonce' => $batchNonce,
+            'exp' => $batchExp,
+            'kid' => $batchKid,
+            'signed_uri' => $signResult['uri'] ?? null,
+        ]
+    ]);
+    exit;
+}
 if ($method === 'POST' && $op === 'csv_upload_tsa') {
     if (!isset($_FILES['csv_file']) || $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK) {
         http_response_code(400);
@@ -329,6 +431,46 @@ if ($method === 'GET' && $op === 'csv_download' && isset($_GET['file'])) {
     }
 }
 
+// Helper: firma una URI usando el signer Node.js (Ed25519)
+function signUriWithNode($params, $kid = 'default', $privateKeyPath = null) {
+    if ($privateKeyPath === null) {
+        $privateKeyPath = __DIR__ . '/signer_keys/private.pem';
+    }
+    if (!file_exists($privateKeyPath)) {
+        return ['error' => 'clave privada no encontrada: ' . $privateKeyPath];
+    }
+    $nodeScript = __DIR__ . '/signer/sign-cli.mjs';
+    $descriptors = [
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ];
+    $process = proc_open(
+        'node ' . escapeshellarg($nodeScript),
+        $descriptors,
+        $pipes
+    );
+    if (!is_resource($process)) {
+        return ['error' => 'no se pudo iniciar signer'];
+    }
+    fwrite($pipes[0], json_encode(['mode' => 'sign', 'params' => $params, 'kid' => $kid, 'privateKeyPem' => file_get_contents($privateKeyPath)]));
+    fclose($pipes[0]);
+    $output = stream_get_contents($pipes[1]);
+    fclose($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[2]);
+    $exitCode = proc_close($process);
+    if ($exitCode !== 0) {
+        return ['error' => 'error en signer', 'stderr' => $stderr];
+    }
+    $result = json_decode($output, true);
+    if (!$result || !isset($result['uri'])) {
+        return ['error' => 'respuesta inválida del signer', 'raw' => $output];
+    }
+    return ['uri' => $result['uri']];
+}
+
+
 // ============================= NUEVOS MÉTODOS JSON JOBS =============================
 
 // ====================================
@@ -352,6 +494,8 @@ if ($method === 'GET' && $op === 'csv_download' && isset($_GET['file'])) {
 // &graphic=true
 // &graphic=false
 //
+// ====================================
+// GET /api.php?op=json_jobs
 // ====================================
 
 if ($method === 'GET' && $op === 'json_jobs') {
@@ -380,7 +524,9 @@ if ($method === 'GET' && $op === 'json_jobs') {
     // BASE URL AUTOMATICA
     // ======================================================
 
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+    $scheme = ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
+        || $_SERVER['SERVER_PORT'] == 443)
         ? "https"
         : "http";
 
@@ -391,41 +537,23 @@ if ($method === 'GET' && $op === 'json_jobs') {
     $baseUrl = $scheme . "://" . $host . $basePath;
 
     // ======================================================
-    // DOCUMENTOS DEMO
+    // CARGAR DOCUMENTOS REALES DESDE documentos.json
     // ======================================================
 
-    $docVisible = "abc123";
-    $docInvisible = "abc256";
+    $docsFile = __DIR__ . '/documentos.json';
+    $documents = [];
+    if (file_exists($docsFile)) {
+        $docsData = json_decode(file_get_contents($docsFile), true);
+        if (is_array($docsData)) {
+            $documents = $docsData;
+        }
+    }
 
-    // ======================================================
-    // URLS DOCUMENTO VISIBLE
-    // ======================================================
-
-    $fromVisible =
-        $baseUrl .
-        "/api.php?op=sample&codigo=" .
-        $docVisible;
-
-    $toVisible =
-        $baseUrl .
-        "/api.php?op=sign_upload&codigo=" .
-        $docVisible .
-        "&user_id=testuser";
-
-    // ======================================================
-    // URLS DOCUMENTO INVISIBLE
-    // ======================================================
-
-    $fromInvisible =
-        $baseUrl .
-        "/api.php?op=sample&codigo=" .
-        $docInvisible;
-
-    $toInvisible =
-        $baseUrl .
-        "/api.php?op=sign_upload&codigo=" .
-        $docInvisible .
-        "&user_id=testuser";
+    if (empty($documents)) {
+        http_response_code(404);
+        echo json_encode(["success" => false, "error" => "No hay documentos configurados en documentos.json"]);
+        exit;
+    }
 
     // ======================================================
     // GRAPHIC URL OPCIONAL
@@ -436,13 +564,101 @@ if ($method === 'GET' && $op === 'json_jobs') {
         : null;
 
     // ======================================================
+    // FIRMA DE URIS CON ED25519 (Node.js signer) - DINAMICO
+    // ======================================================
+
+    $kid = 'default';
+    $privateKeyPath = __DIR__ . '/signer_keys/private.pem';
+    $nonce = bin2hex(random_bytes(16));
+    $exp = time() + 15 * 60; // 15 min
+
+    // Parámetros comunes para firma
+    $commonParams = [
+        ['nonce', $nonce],
+        ['exp', (string)$exp],
+    ];
+
+    // Firmar URI para cada documento real
+    $signedDocuments = [];
+    foreach ($documents as $doc) {
+        $codePdf = $doc['codePdf'] ?? null;
+        if (!$codePdf) continue;
+
+        $docFrom = $baseUrl . "/api.php?op=sample&codigo=" . $codePdf;
+        $docTo = $baseUrl . "/api.php?op=sign_upload&codigo=" . $codePdf . "&user_id=" . ($_GET['user_id'] ?? 'testuser');
+        $docName = $doc['namePdf'] ?? "documento.pdf";
+
+        // SHA256 del PDF (si existe localmente)
+        $sha256 = 'demo_sha256';
+        $localPdfPath = __DIR__ . "/samples/" . ($doc['fileName'] ?? '');
+        if (file_exists($localPdfPath)) {
+            $sha256 = hash_file('sha256', $localPdfPath);
+        }
+
+        // Configuración de firma del documento (del JSON)
+        $sigCfg = $doc['signatureConfig'] ?? [];
+        $posX = $sigCfg['positionx'] ?? 100;
+        $posY = $sigCfg['positiony'] ?? 200;
+        $width = $sigCfg['width'] ?? 150;
+        $height = $sigCfg['height'] ?? 55;
+        $page = $sigCfg['pageNumber'] ?? 1;
+        $textSize = $sigCfg['textSize'] ?? 10;
+        $sigText = $sigCfg['signatureText'] ?? "Firmado digitalmente por: \n<SIGNER>\nFecha: <DATE>\nOU: <OU>\nFirmado con FirmEasy";
+        $useGraphic = $sigCfg['useGraphic'] ?? false;
+        $graphicUrl = $useGraphic && !empty($sigCfg['graphic']) ? $sigCfg['graphic'] : null;
+
+        // Parámetros para este documento
+        $params = [
+            ['from', $docFrom],
+            ['to', $docTo],
+            ['vis_sig_x', $posX],
+            ['vis_sig_y', $posY],
+            ['vis_sig_width', $width],
+            ['vis_sig_height', $height],
+            ['vis_sig_page', $page],
+            ['vis_sig_text_size', $textSize],
+            ['vis_sig_text', $sigText],
+            ['doc_sha256', $sha256],
+        ];
+        if ($graphicUrl) {
+            $params[] = ['vis_sig_graphic', $graphicUrl];
+        }
+        // TLV y upload_simple (según config del documento)
+        $useTsp = !empty($sigCfg['useTsp']);
+        $params[] = ['tlv', $useTsp ? '1' : '0'];
+        $params[] = ['upload_simple', 'true'];
+        $params = array_merge($params, $commonParams);
+
+        $signResult = signUriWithNode($params, 'default', __DIR__ . '/signer_keys/private.pem');
+
+        $signedDocuments[] = [
+            "from" => $docFrom,
+            "to" => $docTo,
+            "name_pdf" => $docName,
+            "sha256" => $sha256,
+            "signed_uri" => $signResult['uri'] ?? null,
+            "signature" => [
+                "page" => $sigCfg['pageNumber'] ?? 1,
+                "x" => $posX,
+                "y" => $posY,
+                "width" => $width,
+                "height" => $height,
+                "text" => $sigText,
+                "text_size" => $textSize,
+                "rotation" => $sigCfg['rotation'] ?? 0,
+                "graphic_url" => $graphicUrl
+            ]
+        ];
+    }
+
+    // ======================================================
     // RESPONSE BASE
     // ======================================================
 
     $response = [
         "session_id" => "751ac6a9-7b9f-4da1-b406-394e2c47e849",
-        "mode" => $mode,
-        "documents" => []
+        "mode" => 0,
+        "documents" => $signedDocuments
     ];
 
     // ======================================================
@@ -459,96 +675,6 @@ if ($method === 'GET' && $op === 'json_jobs') {
     }
 
     // ======================================================
-    // DOCUMENTO VISIBLE
-    // ======================================================
-
-    $visibleDocument = [
-        "from" => $fromVisible,
-        "to" => $toVisible,
-        "name_pdf" => "contrato_visible.pdf",
-        "signature" => [
-            "page" => 1,
-            "x" => 100,
-            "y" => 200,
-            "width" => 150,
-            "height" => 60,
-            "text" => "Firmado por: {name}\nFecha: {date}",
-            "text_size" => 10,
-            "rotation" => 0,
-            "graphic_url" => $graphicUrl
-        ]
-    ];
-
-    // ======================================================
-    // DOCUMENTO INVISIBLE
-    // ======================================================
-
-    $invisibleDocument = [
-        "from" => $fromInvisible,
-        "to" => $toInvisible,
-        "name_pdf" => "contrato_invisible.pdf"
-    ];
-
-    // ======================================================
-    // CASES
-    // ======================================================
-
-    switch ($case) {
-
-        // =========================
-        // VISIBLE
-        // =========================
-
-        case 'visible':
-
-            $response['documents'][] = $visibleDocument;
-
-            break;
-
-        // =========================
-        // INVISIBLE
-        // =========================
-
-        case 'invisible':
-
-            $response['documents'][] = $invisibleDocument;
-
-            break;
-
-        // =========================
-        // MIXED
-        // =========================
-
-        case 'mixed':
-
-            $response['documents'][] = $visibleDocument;
-
-            $response['documents'][] = $invisibleDocument;
-
-            break;
-
-        // =========================
-        // INVALIDO
-        // =========================
-
-        default:
-
-            http_response_code(400);
-
-            echo json_encode([
-                "success" => false,
-                "error" => "case inválido",
-                "allowed" => [
-                    "visible",
-                    "invisible",
-                    "mixed"
-                ]
-            ], JSON_PRETTY_PRINT);
-
-            exit;
-    }
-
-    // ======================================================
     // RESPONSE FINAL
     // ======================================================
 
@@ -561,6 +687,76 @@ if ($method === 'GET' && $op === 'json_jobs') {
 }
 
 
+
+// ====================================
+// POST /api.php?op=sign_uri
+// ====================================
+// Recibe JSON body con los parámetros de la URI y retorna la URI firmada con Ed25519.
+// No modifica el comportamiento de ningún endpoint existente.
+
+if ($method === 'POST' && $op === 'sign_uri') {
+    $rawBody = file_get_contents('php://input');
+    file_put_contents(__DIR__ . '/uploads/debug.log', date('c') . ' body=' . $rawBody . PHP_EOL, FILE_APPEND);
+    $input = json_decode($rawBody, true);
+    file_put_contents(__DIR__ . '/uploads/debug.log', date('c') . ' decoded=' . json_encode($input) . PHP_EOL, FILE_APPEND);
+    if (!$input || !isset($input['params']) || !is_array($input['params'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'params incompletos, se espera array de pares [clave, valor]', 'raw' => $rawBody, 'decoded' => $input]);
+        exit;
+    }
+    $kid = $input['kid'] ?? 'default';
+    $privateKeyPath = $input['privateKeyPath'] ?? __DIR__ . '/signer_keys/private.pem';
+    if (!file_exists($privateKeyPath)) {
+        http_response_code(500);
+        echo json_encode(['error' => 'clave privada no encontrada: ' . $privateKeyPath]);
+        exit;
+    }
+    $privateKeyPem = file_get_contents($privateKeyPath);
+    $paramsJson = json_encode($input['params']);
+    $nodeScript = __DIR__ . '/signer/sign-cli.mjs';
+    $descriptors = [
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ];
+    $process = proc_open(
+        'node ' . escapeshellarg($nodeScript),
+        $descriptors,
+        $pipes
+    );
+    if (!is_resource($process)) {
+        http_response_code(500);
+        echo json_encode(['error' => 'no se pudo iniciar signer']);
+        exit;
+    }
+    fwrite($pipes[0], json_encode(['mode' => 'sign', 'params' => $input['params'], 'kid' => $kid, 'privateKeyPem' => $privateKeyPem]));
+    fclose($pipes[0]);
+    $output = stream_get_contents($pipes[1]);
+    fclose($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[2]);
+    $exitCode = proc_close($process);
+    if ($exitCode !== 0) {
+        http_response_code(500);
+        echo json_encode(['error' => 'error en signer', 'stderr' => $stderr]);
+        exit;
+    }
+    $result = json_decode($output, true);
+    if (!$result || !isset($result['uri'])) {
+        http_response_code(500);
+        echo json_encode(['error' => 'respuesta invalida del signer', 'raw' => $output]);
+        exit;
+    }
+    header('Content-Type: application/json');
+    echo json_encode(['signed_uri' => $result['uri'], 'kid' => $kid], JSON_PRETTY_PRINT);
+    exit;
+}
+
+
+// ====================================
+// Endpoints de auditoria/pruebas
+// ====================================
+require_once __DIR__ . '/api_test.php';
 
 // ====================================
 // Método o ruta no válida

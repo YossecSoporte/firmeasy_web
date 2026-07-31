@@ -18,3 +18,4 @@ docker-compose.yml
 .dockerignore
 tests
 README.md
+signer_keys

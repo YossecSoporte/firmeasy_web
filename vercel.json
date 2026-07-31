@@ -1,0 +1,58 @@
+{
+  "builds": [
+    {
+      "src": "*.php",
+      "use": "vercel-php@0.6.2"
+    },
+    {
+      "src": "index.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "*.json",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "public/**/*",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "samples/**/*",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "samples3/**/*",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "samplescsv/**/*",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "uploads/**/*",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "document/**/*",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "signer/**/*",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "signer_keys/**/*",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "Consumo/**/*",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
+  ]
+}

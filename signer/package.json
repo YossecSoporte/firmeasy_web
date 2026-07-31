@@ -1,0 +1,11 @@
+{
+  "name": "firmeasy-signer",
+  "version": "1.0.0",
+  "description": "Ed25519 URI signer for firmeasy scheme",
+  "type": "module",
+  "main": "sign-cli.mjs",
+  "scripts": {
+    "sign": "node sign-cli.mjs"
+  },
+  "license": "MIT"
+}
