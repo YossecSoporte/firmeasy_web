@@ -324,15 +324,36 @@ if ($method === 'POST' && $op === 'csv_upload' && isset($_GET['csv'])) {
     $name = preg_replace('/[^a-zA-Z0-9\.\-_]/', '', basename($_FILES['csv_file']['name']));
     $targetPath = "$csvDir/" . uniqid() . "_$name";
     if (move_uploaded_file($_FILES['csv_file']['tmp_name'], $targetPath)) {
+        // Subir a Vercel Blob (si BLOB_READ_WRITE_TOKEN está configurado)
+        $blobUrl = null;
+        $blobPathname = null;
+        $token = getenv('BLOB_READ_WRITE_TOKEN');
+        if (is_string($token) && $token !== '') {
+            require_once __DIR__ . '/blob_storage.php';
+            $blobPathname = 'csv/' . $csvId . '_' . time() . '.csv';
+            $up = blobUploadCsv($blobPathname, file_get_contents($targetPath));
+            if ($up['ok'] && $up['url']) {
+                $blobUrl = $up['url'];
+            } else {
+                file_put_contents($uploadDir . '/debug.log', date('c') . " blob csv_upload fallo: " . json_encode($up) . PHP_EOL, FILE_APPEND);
+            }
+        }
+
         $fakeDb["csv_$csvId"] = $targetPath;
+        if ($blobUrl) {
+            $fakeDb["csv_url_$csvId"] = $blobUrl;
+            $fakeDb["csv_blob_$csvId"] = $blobPathname;
+        }
         file_put_contents($dbFile, json_encode($fakeDb, JSON_PRETTY_PRINT));
-        http_response_code(201);
-        echo json_encode([
+        $response = [
             'success' => true,
             'message' => 'CSV subido exitosamente',
             'path' => $targetPath,
             'id' => $csvId,
-        ]);
+        ];
+        if ($blobUrl) $response['url'] = $blobUrl;
+        http_response_code(201);
+        echo json_encode($response);
     } else {
         http_response_code(500);
         echo json_encode(['error' => 'Error al guardar el CSV']);
@@ -345,6 +366,13 @@ if ($method === 'POST' && $op === 'csv_upload' && isset($_GET['csv'])) {
 if ($method === 'GET' && $op === 'csv_download' && isset($_GET['codigo'])) {
     $codigo = $_GET['codigo'];
     $key = "csv_$codigo";
+
+    // URL de Blob si existe (producción)
+    if (!empty($fakeDb["csv_url_$codigo"])) {
+        header('Location: ' . $fakeDb["csv_url_$codigo"]);
+        exit;
+    }
+
     if (isset($fakeDb[$key])) {
         $archivo = $fakeDb[$key];
         if (file_exists($archivo) && is_readable($archivo)) {
@@ -355,6 +383,18 @@ if ($method === 'GET' && $op === 'csv_download' && isset($_GET['codigo'])) {
             exit;
         }
     }
+
+    // Fallback: buscar en Vercel Blob (producción)
+    $token = getenv('BLOB_READ_WRITE_TOKEN');
+    if (is_string($token) && $token !== '') {
+        require_once __DIR__ . '/blob_storage.php';
+        $blobUrl = blobFindLatestUrl('csv/' . $codigo . '_');
+        if ($blobUrl) {
+            header('Location: ' . $blobUrl);
+            exit;
+        }
+    }
+
     http_response_code(404);
     echo json_encode(['error' => 'CSV no encontrado']);
     exit;
@@ -375,9 +415,18 @@ if ($method === 'POST' && $op === 'csv_sign' && isset($_GET['codigo'])) {
     $csvPath = $fakeDb[$key];
     $csvContent = file_get_contents($csvPath);
     if ($csvContent === false) {
-        http_response_code(500);
-        echo json_encode(['error' => 'No se pudo leer el CSV']);
-        exit;
+        // Fallback: leer desde Vercel Blob (producción)
+        $token = getenv('BLOB_READ_WRITE_TOKEN');
+        if (is_string($token) && $token !== '') {
+            require_once __DIR__ . '/blob_storage.php';
+            $blobUrl = blobFindLatestUrl('csv/' . $codigo . '_');
+            if ($blobUrl) $csvContent = @file_get_contents($blobUrl);
+        }
+        if ($csvContent === false) {
+            http_response_code(500);
+            echo json_encode(['error' => 'No se pudo leer el CSV']);
+            exit;
+        }
     }
 
     // SHA-256 del contenido del CSV para firmar
@@ -441,14 +490,29 @@ if ($method === 'POST' && $op === 'csv_upload_tsa') {
         exit;
     }
     if (move_uploaded_file($file['tmp_name'], $filePath)) {
-        $url = 'http://localhost:8080/' . $fileName;
-        echo json_encode([
+        // Subir a Vercel Blob (si BLOB_READ_WRITE_TOKEN está configurado)
+        $blobUrl = null;
+        $blobPathname = null;
+        $token = getenv('BLOB_READ_WRITE_TOKEN');
+        if (is_string($token) && $token !== '') {
+            require_once __DIR__ . '/blob_storage.php';
+            $blobPathname = 'csv/' . $fileName;
+            $up = blobUploadCsv($blobPathname, file_get_contents($filePath));
+            if ($up['ok'] && $up['url']) {
+                $blobUrl = $up['url'];
+            } else {
+                file_put_contents($uploadDir . '/debug.log', date('c') . " blob csv_upload_tsa fallo: " . json_encode($up) . PHP_EOL, FILE_APPEND);
+            }
+        }
+        $response = [
             "success" => true,
-            "url" => $url,
+            "url" => $blobUrl ?: 'http://localhost:8080/' . $fileName,
             "path" => $filePath,
             "file" => $fileName,
             "id" => "tsa"
-        ]);
+        ];
+        if ($blobUrl) $response['blobPathname'] = $blobPathname;
+        echo json_encode($response);
     } else {
         http_response_code(500);
         echo json_encode(["success" => false, "error" => "Error al mover archivo"]);
@@ -464,11 +528,20 @@ if ($method === 'GET' && $op === 'csv_download' && isset($_GET['file'])) {
         header('Content-Length: ' . filesize($filePath));
         readfile($filePath);
         exit;
-    } else {
-        http_response_code(404);
-        echo json_encode(["error" => "Archivo CSV no encontrado"]);
-        exit;
     }
+    // Fallback: buscar en Vercel Blob (producción)
+    $token = getenv('BLOB_READ_WRITE_TOKEN');
+    if (is_string($token) && $token !== '') {
+        require_once __DIR__ . '/blob_storage.php';
+        $blobUrl = blobFindLatestUrl('csv/' . $fileName);
+        if ($blobUrl) {
+            header('Location: ' . $blobUrl);
+            exit;
+        }
+    }
+    http_response_code(404);
+    echo json_encode(["error" => "Archivo CSV no encontrado"]);
+    exit;
 }
 
 // Helper: firma una URI usando el signer Node.js (Ed25519)

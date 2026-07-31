@@ -71,12 +71,12 @@ function blobRequest($method, $query, $headers = [], $body = null) {
     return ['ok' => $status >= 200 && $status < 300, 'status' => $status, 'body' => $resp === false ? '' : $resp, 'error' => ''];
 }
 
-// Sube un PDF a Blob y devuelve la URL pública (store público) o null.
-function blobUploadPdf($pathname, $content) {
+// Sube contenido a Blob y devuelve la URL pública (store público) o null.
+function blobUploadGeneric($pathname, $content, $contentType) {
     $r = blobRequest('PUT', 'pathname=' . rawurlencode($pathname), [
         'x-vercel-blob-access' => 'public',
-        'x-content-type' => 'application/pdf',
-        'content-type' => 'application/pdf',
+        'x-content-type' => $contentType,
+        'content-type' => $contentType,
         'x-allow-overwrite' => '1',
     ], $content);
     $data = json_decode($r['body'], true);
@@ -88,6 +88,16 @@ function blobUploadPdf($pathname, $content) {
         'error' => $r['error'],
         'raw' => $r['body'],
     ];
+}
+
+// Sube un PDF a Blob y devuelve la URL pública (store público) o null.
+function blobUploadPdf($pathname, $content) {
+    return blobUploadGeneric($pathname, $content, 'application/pdf');
+}
+
+// Sube un CSV a Blob y devuelve la URL pública (store público) o null.
+function blobUploadCsv($pathname, $content) {
+    return blobUploadGeneric($pathname, $content, 'text/csv');
 }
 
 // Lista blobs con un prefijo. Devuelve ['ok' => bool, 'blobs' => array].
