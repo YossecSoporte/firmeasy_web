@@ -741,10 +741,35 @@ if ($method === 'GET' && $op === 'json_jobs') {
         $codePdf = $doc['codePdf'] ?? null;
         if (!$codePdf) continue;
 
-        $docFrom = $baseUrl . "/api.php?op=sample&codigo=" . $codePdf;
-        $docTo = $baseUrl . "/api.php?op=sign_upload&codigo=" . $codePdf . "&user_id=" . ($_GET['user_id'] ?? 'testuser');
-        $docName = $doc['namePdf'] ?? "documento.pdf";
+        // $docFrom = $baseUrl . "/api.php?op=sample&codigo=" . $codePdf;
+        // $docTo = $baseUrl . "/api.php?op=sign_upload&codigo=" . $codePdf . "&user_id=" . ($_GET['user_id'] ?? 'testuser');
+        // $docName = $doc['namePdf'] ?? "documento.pdf";
+$docFrom = $baseUrl
+    . "/api.php?op=sample&codigo="
+    . rawurlencode($codePdf);
 
+$userIdForUpload = $_GET['user_id'] ?? 'testuser';
+
+$host = $_SERVER['HTTP_HOST'] ?? '';
+$isLocalHost =
+    strpos($host, 'localhost') !== false ||
+    strpos($host, '127.0.0.1') !== false;
+
+if ($isLocalHost) {
+    $docTo = $baseUrl
+        . "/api.php?op=sign_upload&codigo="
+        . rawurlencode($codePdf)
+        . "&user_id="
+        . rawurlencode($userIdForUpload);
+} else {
+    $docTo = $baseUrl
+        . "/api/sign-upload?codigo="
+        . rawurlencode($codePdf)
+        . "&user_id="
+        . rawurlencode($userIdForUpload);
+}
+
+$docName = $doc['namePdf'] ?? "documento.pdf";
         // SHA256 del PDF (si existe localmente)
         $sha256 = 'demo_sha256';
         $localPdfPath = __DIR__ . "/samples/" . ($doc['fileName'] ?? '');

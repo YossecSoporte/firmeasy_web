@@ -1,77 +1,39 @@
-// document.addEventListener("DOMContentLoaded", () => {
-//   const btnMasiva = document.querySelector(".action-button button");
-
-//   if (btnMasiva) {
-//     btnMasiva.addEventListener("click", async () => {
-//       const firmas = prepararFirmasDesdeJSON();
-
-//       if (firmas.length === 0) {
-//         alert("No hay documentos válidos para firmar.");
-//         return;
-//       }
-
-//       const csvContent = generarCSV(firmas);
-
-//       try {
-//         const { urlDescarga, csvId } = await guardarCSVEnServidor(csvContent);
-
-//         // Firmar el batch con Ed25519
-//         const signResponse = await fetch(`api.php?op=csv_sign&codigo=${csvId}`, { method: 'POST' });
-//         const signData = await signResponse.json();
-
-//         if (!signData.success || !signData.batch?.signed_uri) {
-//           throw new Error('No se pudo firmar el batch CSV');
-//         }
-
-//         // Usar la URI firmada del batch
-//         const uri = signData.batch.signed_uri;
-
-//         window.location.href = uri;
-//         const userId = UserManager.getUserId();
-//         globalDocuments.forEach((doc) => {
-//           if (doc.status !== "signed") {
-//             startSignaturePollingMulti(doc.codePdf, userId);
-//           }
-//         });
-//       } catch (err) {
-//         console.error("Error al firmar CSV:", err);
-//         alert("Ocurrió un error al firmar el batch: " + err.message);
-//       }
-//     });
-//   }
-// });
 async function iniciarFirmaMasiva() {
   const firmas = prepararFirmasDesdeJSON();
 
   if (firmas.length === 0) {
-    alert("No hay documentos válidos para firmar.");
+    alert(
+      "No hay documentos pendientes con una configuración válida."
+    );
     return;
   }
 
   try {
     const csvContent = generarCSV(firmas);
-
     const signData = await guardarYFirmarCSV(csvContent);
 
     if (!signData.success) {
       throw new Error(
-        signData.error || "No se pudo firmar el batch CSV"
+        signData.error || "No se pudo firmar el lote CSV"
       );
     }
 
-    if (!signData.batch?.signed_uri) {
+    const uri = signData.batch?.signed_uri;
+
+    if (!uri) {
       throw new Error(
-        signData.signer_error ||
-        "El servidor no devolvió la URI firmada"
+        "El servidor no devolvió la URI de firma masiva"
       );
     }
 
-    const uri = signData.batch.signed_uri;
     const userId = UserManager.getUserId();
 
     globalDocuments.forEach((doc) => {
       if (doc.status !== "signed") {
-        startSignaturePollingMulti(doc.codePdf, userId);
+        startSignaturePollingMulti(
+          doc.codePdf,
+          userId
+        );
       }
     });
 
@@ -120,7 +82,9 @@ async function guardarYFirmarCSV(csvContent) {
 
   if (!response.ok || !data.success) {
     throw new Error(
-      data.error || `Error HTTP ${response.status}`
+      data.error ||
+      data.detail ||
+      `Error HTTP ${response.status}`
     );
   }
 
@@ -133,29 +97,83 @@ async function guardarYFirmarCSV(csvContent) {
   return data;
 }
 
-window.iniciarFirmaMasiva = iniciarFirmaMasiva;
+function isLocalEnvironment() {
+  return (
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1"
+  );
+}
+
+function getSignUploadUrl(code, userId) {
+  if (isLocalEnvironment()) {
+    return (
+      `${BASE_URL}?op=sign_upload` +
+      `&codigo=${encodeURIComponent(code)}` +
+      `&user_id=${encodeURIComponent(userId)}`
+    );
+  }
+
+  return (
+    `${window.location.origin}/api/sign-upload` +
+    `?codigo=${encodeURIComponent(code)}` +
+    `&user_id=${encodeURIComponent(userId)}`
+  );
+}
+
+function getSignedDocumentUrl(code, userId) {
+  if (isLocalEnvironment()) {
+    return (
+      `/sign_download.php` +
+      `?codigo=${encodeURIComponent(code)}` +
+      `&user_id=${encodeURIComponent(userId)}`
+    );
+  }
+
+  return (
+    `/api/sign-download` +
+    `?codigo=${encodeURIComponent(code)}` +
+    `&user_id=${encodeURIComponent(userId)}`
+  );
+}
+
 function prepararFirmasDesdeJSON() {
   const firmas = [];
 
   (globalDocuments || []).forEach((doc) => {
     const cfg = doc.signatureConfig || {};
-    if (!cfg.positionx || !cfg.positiony || !cfg.width || !cfg.height) return;
-    if (doc.status === "signed") return;
+
+    if (
+      cfg.positionx === undefined ||
+      cfg.positiony === undefined ||
+      !cfg.width ||
+      !cfg.height
+    ) {
+      return;
+    }
+
+    if (doc.status === "signed") {
+      return;
+    }
 
     const code = doc.codePdf;
-    const tspUrl = cfg.useTsp ? cfg.tsp?.url || "" : "";
     const userId = UserManager.getUserId();
-    
+
+    const tspUrl = cfg.useTsp
+      ? cfg.tsp?.url || ""
+      : "";
+
     firmas.push({
       fileName: doc.fileName,
       urlDescarga: getPdfUrlFromCode(code),
-      urlSubida: `${BASE_URL}?op=sign_upload&codigo=${encodeURIComponent(code)}&user_id=${userId}`,
+      urlSubida: getSignUploadUrl(code, userId),
       x: cfg.positionx,
       y: cfg.positiony,
       width: cfg.width,
       height: cfg.height,
       sigText: DEFAULT_SIGNATURE_TEXT,
-      graphic: cfg.useGraphic ? cfg.graphic : "",
+      graphic: cfg.useGraphic
+        ? cfg.graphic || ""
+        : "",
       page: cfg.pageNumber || DEFAULT_PAGE_NUMBER,
       textSize: DEFAULT_TEXT_SIZE,
       tsp: tspUrl,
@@ -167,10 +185,11 @@ function prepararFirmasDesdeJSON() {
 }
 
 function generarCSV(firmas) {
-  const escapeCsv = (text) =>
-    `"${(text || "")
-      .replace(/\n/g, "\\n")       // Escapar saltos de línea reales
-      .replace(/"/g, '""')}"`;     // Escapar comillas dobles
+  const escapeCsv = (value) => {
+    return `"${String(value || "")
+      .replace(/\r?\n/g, "\\n")
+      .replace(/"/g, '""')}"`;
+  };
 
   return firmas
     .map((sig) => {
@@ -192,92 +211,111 @@ function generarCSV(firmas) {
     .join("\n");
 }
 
-
-async function guardarCSVEnServidor(csvContent) {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const codigo = `firmas-${timestamp}`;
-  const uploadUrl = `${BASE_URL}?op=csv_upload&csv=${codigo}`;
-  const downloadUrl = `${BASE_URL}?op=csv_download&codigo=${codigo}`;
-
-  const formData = new FormData();
-  formData.append(
-    "csv_file",
-    new Blob([csvContent], { type: "text/csv" }),
-    "firmas.csv"
-  );
-
-  const response = await fetch(uploadUrl, {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!response.ok) {
-    throw new Error("No se pudo subir el CSV al servidor");
-  }
-
-  console.log(`CSV guardado como ${codigo}.csv`);
-
-  return {
-    nombreArchivo: `${codigo}.csv`,
-    urlDescarga: downloadUrl,
-    rutaLocal: `/samplescsv/${codigo}.csv`,
-    csvId: codigo,
-  };
-}
-
 function startSignaturePollingMulti(docId, userId) {
+  let attempts = 0;
+  const maxAttempts = 200;
+
   const interval = setInterval(async () => {
-    try {
-      globalSignedDocs = await loadSignedDocuments();
-      const userSignedDocs = globalSignedDocs[userId] || [];
-      const isSigned = userSignedDocs.some(
-        (entry) => entry.code.trim() === String(docId).trim()
+    attempts += 1;
+
+    if (attempts > maxAttempts) {
+      clearInterval(interval);
+
+      console.warn(
+        `Tiempo de espera agotado para ${docId}`
       );
 
-      if (isSigned) {
-        clearInterval(interval);
+      return;
+    }
 
-        // Actualizar estado local del documento
-        const doc = globalDocuments.find(
-          (d) => String(d.codePdf).trim() === String(docId).trim()
+    try {
+      const url =
+        `/api/sign-status` +
+        `?codigo=${encodeURIComponent(docId)}` +
+        `&user_id=${encodeURIComponent(userId)}`;
+
+      const response = await fetch(url, {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `Error HTTP ${response.status}`
         );
-        if (doc) doc.status = "signed";
-
-        await generateTableRows(); // refresca la tabla
-        showToast("Documento firmado exitosamente", "success");
       }
-    } catch (error) {
+
+      const statusData = await response.json();
+
+      if (!statusData.signed) {
+        return;
+      }
+
       clearInterval(interval);
+
+      const doc = globalDocuments.find(
+        (item) =>
+          String(item.codePdf).trim() ===
+          String(docId).trim()
+      );
+
+      if (doc) {
+        doc.status = "signed";
+      }
+
+      await generateTableRows();
+
+      showToast(
+        "Documento firmado exitosamente",
+        "success"
+      );
+    } catch (error) {
+      console.error(
+        `Error consultando estado de ${docId}:`,
+        error
+      );
     }
   }, 3000);
 }
 
 async function viewSignedDocument(docId) {
   try {
-    const doc = globalDocuments.find((d) => d.id == docId);
-    if (!doc) throw new Error("Documento no encontrado");
+    const doc = globalDocuments.find(
+      (item) =>
+        String(item.id) === String(docId) ||
+        String(item.codePdf) === String(docId)
+    );
+
+    if (!doc) {
+      throw new Error("Documento no encontrado");
+    }
+
     const userId = UserManager.getUserId();
-    const signedDocUrl = `/sign_download.php?codigo=${encodeURIComponent(
-      doc.codePdf
-    )}&user_id=${userId}`;
-    window.open(signedDocUrl, "_blank");
+
+    const signedDocUrl = getSignedDocumentUrl(
+      doc.codePdf,
+      userId
+    );
+
+    window.open(
+      signedDocUrl,
+      "_blank",
+      "noopener,noreferrer"
+    );
   } catch (error) {
-    console.error("Error al ver documento:", error);
-    showToast("Error al mostrar documento firmado", "error");
+    console.error(
+      "Error al ver documento firmado:",
+      error
+    );
+
+    showToast(
+      "Error al mostrar el documento firmado",
+      "error"
+    );
   }
 }
 
-async function loadSignedDocuments() {
-  try {
-    const response = await fetch("/api_signed_docs.php");
+window.viewSignedDocument = viewSignedDocument;
 
-    if (!response.ok) throw new Error("No se pudo cargar signed_docs.json");
-    return await response.json();
-  } catch (error) {
-    console.error("Error al cargar signed_docs.json:", error);
-    return {};
-  }
-}
 function showToast(message, type = "info") {
   console.log(`${type.toUpperCase()}: ${message}`);
 }

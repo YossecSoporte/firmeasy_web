@@ -490,12 +490,114 @@ function BtnFirmarDocumentById(docId) {
 
 async function loadSignedDocuments() {
     try {
-        const response = await fetch("/api_signed_docs.php");
+        const isLocal =
+            window.location.hostname === "localhost" ||
+            window.location.hostname === "127.0.0.1";
 
-        if (!response.ok) throw new Error("No se pudo cargar signed_docs.json");
-        return await response.json();
+        /*
+         * Conservamos el comportamiento antiguo en local,
+         * porque allí ya está funcionando.
+         */
+        if (isLocal) {
+            const response = await fetch(
+                "/api_signed_docs.php",
+                {
+                    cache: "no-store",
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(
+                    "No se pudo cargar api_signed_docs.php"
+                );
+            }
+
+            return await response.json();
+        }
+
+        /*
+         * En producción consultamos Vercel Blob
+         * mediante /api/sign-status.
+         */
+        const userId = UserManager.getUserId();
+
+        if (
+            !userId ||
+            !Array.isArray(globalDocuments) ||
+            globalDocuments.length === 0
+        ) {
+            return {
+                [userId || "anonymous"]: [],
+            };
+        }
+
+        const signedEntries = [];
+
+        await Promise.all(
+            globalDocuments.map(async (doc) => {
+                const codigo =
+                    doc.codePdf ||
+                    doc.codigo ||
+                    doc.code ||
+                    doc.id;
+
+                if (!codigo) {
+                    console.warn(
+                        "Documento sin código:",
+                        doc
+                    );
+                    return;
+                }
+
+                try {
+                    const url =
+                        `/api/sign-status` +
+                        `?codigo=${encodeURIComponent(codigo)}` +
+                        `&user_id=${encodeURIComponent(userId)}`;
+
+                    const response = await fetch(url, {
+                        method: "GET",
+                        cache: "no-store",
+                        headers: {
+                            Accept: "application/json",
+                        },
+                    });
+
+                    if (!response.ok) {
+                        console.warn(
+                            `No se pudo consultar ${codigo}:`,
+                            response.status
+                        );
+                        return;
+                    }
+
+                    const status = await response.json();
+
+                    if (status.signed === true) {
+                        signedEntries.push({
+                            code: String(codigo),
+                            pathname: status.pathname || "",
+                            signed: true,
+                        });
+                    }
+                } catch (error) {
+                    console.error(
+                        `Error consultando estado de ${codigo}:`,
+                        error
+                    );
+                }
+            })
+        );
+
+        return {
+            [userId]: signedEntries,
+        };
     } catch (error) {
-        console.error("Error al cargar signed_docs.json:", error);
+        console.error(
+            "Error cargando documentos firmados:",
+            error
+        );
+
         return {};
     }
 }
@@ -517,21 +619,146 @@ async function viewSignedDocument(docId) {
 }
 
 function startSignaturePolling(docId, userId) {
-    const interval = setInterval(async () => {
-        try {
-            globalSignedDocs = await loadSignedDocuments();
-            const userSignedDocs = globalSignedDocs[userId] || [];
-            const isSigned = userSignedDocs.some(
-                (entry) => entry.code.trim() === String(docId).trim()
-            );
+    const isLocal =
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1";
 
-            if (isSigned) {
+    let attempts = 0;
+    const maxAttempts = 120;
+
+    const interval = setInterval(async () => {
+        attempts += 1;
+
+        try {
+            /*
+             * Local conserva el funcionamiento existente.
+             */
+            if (isLocal) {
+                globalSignedDocs =
+                    await loadSignedDocuments();
+
+                const userSignedDocs =
+                    globalSignedDocs[userId] || [];
+
+                const isSigned = userSignedDocs.some(
+                    (entry) =>
+                        String(entry.code).trim() ===
+                        String(docId).trim()
+                );
+
+                if (isSigned) {
+                    clearInterval(interval);
+                    await generateTableRows();
+
+                    showToast(
+                        "Documento firmado exitosamente",
+                        "success"
+                    );
+                }
+
+                return;
+            }
+
+            /*
+             * Producción consulta directamente sign-status.
+             */
+            const url =
+                `/api/sign-status` +
+                `?codigo=${encodeURIComponent(docId)}` +
+                `&user_id=${encodeURIComponent(userId)}`;
+
+            const response = await fetch(url, {
+                method: "GET",
+                cache: "no-store",
+                headers: {
+                    Accept: "application/json",
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(
+                    `HTTP ${response.status}`
+                );
+            }
+
+            const status = await response.json();
+
+            if (status.signed === true) {
                 clearInterval(interval);
+
+                if (!globalSignedDocs) {
+                    globalSignedDocs = {};
+                }
+
+                if (
+                    !Array.isArray(
+                        globalSignedDocs[userId]
+                    )
+                ) {
+                    globalSignedDocs[userId] = [];
+                }
+
+                const alreadyRegistered =
+                    globalSignedDocs[userId].some(
+                        (entry) =>
+                            String(entry.code).trim() ===
+                            String(docId).trim()
+                    );
+
+                if (!alreadyRegistered) {
+                    globalSignedDocs[userId].push({
+                        code: String(docId),
+                        pathname: status.pathname || "",
+                        signed: true,
+                    });
+                }
+
+                SignatureTracker.addSignature?.(
+                    String(docId)
+                );
+
                 await generateTableRows();
-                showToast("Documento firmado exitosamente", "success");
+
+                showToast(
+                    "Documento firmado exitosamente",
+                    "success"
+                );
+
+                return;
+            }
+
+            if (attempts >= maxAttempts) {
+                clearInterval(interval);
+
+                console.warn(
+                    "Se agotó el tiempo de espera para:",
+                    docId
+                );
+
+                showToast(
+                    "No se detectó el documento firmado",
+                    "warning"
+                );
             }
         } catch (error) {
-            clearInterval(interval);
+            console.error(
+                `Error verificando firma ${docId}:`,
+                error
+            );
+
+            /*
+             * No detenemos el polling por un error aislado.
+             */
+            if (attempts >= maxAttempts) {
+                clearInterval(interval);
+
+                showToast(
+                    "No se pudo verificar la firma",
+                    "error"
+                );
+            }
         }
     }, 3000);
+
+    return interval;
 }

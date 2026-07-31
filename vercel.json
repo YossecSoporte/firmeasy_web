@@ -1,11 +1,28 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "builds": [
     {
       "src": "*.php",
       "use": "vercel-php@0.6.2"
     },
     {
-      "src": "api/*.mjs",
+      "src": "api/csv-sign.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "api/csv-download.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "api/sign-upload.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "api/sign-status.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "api/sign-download.js",
       "use": "@vercel/node"
     },
     {
@@ -55,9 +72,33 @@
   ],
   "routes": [
     {
+      "src": "^/$",
+      "dest": "/index.html"
+    },
+    {
       "src": "/api/csv-sign",
       "methods": ["POST"],
-      "dest": "/api/csv-sign.mjs"
+      "dest": "/api/csv-sign.js"
+    },
+    {
+      "src": "/api/csv-download",
+      "methods": ["GET"],
+      "dest": "/api/csv-download.js"
+    },
+    {
+      "src": "/api/sign-upload",
+      "methods": ["POST", "PUT"],
+      "dest": "/api/sign-upload.js"
+    },
+    {
+      "src": "/api/sign-status",
+      "methods": ["GET"],
+      "dest": "/api/sign-status.js"
+    },
+    {
+      "src": "/api/sign-download",
+      "methods": ["GET"],
+      "dest": "/api/sign-download.js"
     },
     {
       "src": "/(.*)",

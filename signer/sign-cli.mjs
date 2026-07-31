@@ -40,14 +40,67 @@ function verifyUri(uri, publicKeyResolver) {
   const params = new URLSearchParams(signed);
   const kid = params.get('kid');
   if (!kid) return { ok: false, reason: 'falta kid' };
-  const pub = publicKeyResolver(kid);
-  if (!pub) return { ok: false, reason: `kid desconocido: ${kid}` };
-  let valid = false;
-  try {
-    valid = edVerify(null, Buffer.from(signed, 'utf8'), asPublicKey(pub), fromB64url(sigB64));
-  } catch {
-    return { ok: false, reason: 'firma malformada' };
-  }
+const pub = publicKeyResolver(kid);
+
+if (!pub) {
+  return {
+    ok: false,
+    reason: `kid desconocido: ${kid}`,
+  };
+}
+
+let publicKey;
+
+try {
+  publicKey = asPublicKey(pub);
+} catch (error) {
+  return {
+    ok: false,
+    reason: "clave pública inválida",
+    detail: error.message,
+  };
+}
+
+let signature;
+
+try {
+  signature = fromB64url(sigB64);
+} catch (error) {
+  return {
+    ok: false,
+    reason: "firma Base64URL inválida",
+    detail: error.message,
+  };
+}
+
+let valid = false;
+
+try {
+  valid = edVerify(
+    null,
+    Buffer.from(signed, "utf8"),
+    publicKey,
+    signature
+  );
+} catch (error) {
+  return {
+    ok: false,
+    reason: "error verificando firma",
+    detail: error.message,
+  };
+}
+
+if (!valid) {
+  return {
+    ok: false,
+    reason: "firma invalida",
+  };
+}
+
+return {
+  ok: true,
+  params,
+};
   if (!valid) return { ok: false, reason: 'firma invalida' };
   return { ok: true, params };
 }
@@ -69,14 +122,48 @@ function main() {
     const { params, kid, privateKeyPem } = input;
     const uri = signUri(params, kid, privateKeyPem);
     console.log(JSON.stringify({ uri, signed: true }));
-  } else if (mode === 'verify') {
-    const { uri, publicKeyPem, kid } = input;
-    const result = verifyUri(uri, (k) => {
-      if (k === kid) return publicKeyPem;
+  } else if (mode === "verify") {
+  const uri = input.uri;
+  const expectedKid = String(input.kid || "").trim();
+  const publicKeyPem = input.publicKeyPem;
+
+  if (!uri || typeof uri !== "string") {
+    console.log(
+      JSON.stringify({
+        ok: false,
+        reason: "falta uri",
+      })
+    );
+    process.exit(0);
+  }
+
+  if (
+    !publicKeyPem ||
+    typeof publicKeyPem !== "string"
+  ) {
+    console.log(
+      JSON.stringify({
+        ok: false,
+        reason: "falta publicKeyPem",
+        receivedType: typeof publicKeyPem,
+        inputKeys: Object.keys(input),
+      })
+    );
+    process.exit(0);
+  }
+
+  const result = verifyUri(uri, (uriKid) => {
+    const normalizedUriKid = String(uriKid || "").trim();
+
+    if (normalizedUriKid !== expectedKid) {
       return null;
-    });
-    console.log(JSON.stringify(result));
-  } else if (mode === 'keypair') {
+    }
+
+    return publicKeyPem;
+  });
+
+  console.log(JSON.stringify(result));
+} else if (mode === 'keypair') {
     const kp = generateEd25519Keypair();
     console.log(JSON.stringify(kp));
   } else if (mode === 'sha256') {
