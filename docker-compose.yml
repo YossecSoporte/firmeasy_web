@@ -1,0 +1,21 @@
+services:
+  php:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: firmeasy-api
+    container_name: firmeasy-container
+    ports:
+      - "8080:80"
+    volumes:
+      - ./:/var/www/html
+      - ./uploads:/var/www/html/uploads
+      - ./samples:/var/www/html/samples
+      - ./samplescsv:/var/www/html/samplescsv
+      - ./signer_keys:/var/www/html/signer_keys
+      - ./signed_docs.json:/var/www/html/signed_docs.json
+      - ./fake_db.json:/var/www/html/fake_db.json
+      - ./firmas.json:/var/www/html/firmas.json
+    environment:
+      - PHP_DISPLAY_ERRORS=1
+    restart: unless-stopped

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="es">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Firmeasy App</title>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
+        <link
+            href="https://unpkg.com/lucide@latest/icons.css"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="./public/stilefirmeasy.css" />
+    </head>
+    <body>
+        <div class="container">
+            <!-- Header -->
+            <div class="header">
+                <h1>Firmeasy App</h1>
+                <p>
+                    Gestiona tus documentos digitales de forma simple y segura
+                </p>
+                <div class="flex gap-2 mt-2">
+                    <button class="btn btn-secondary btn-sm" onclick="resetApp()">
+                        <i class="icon" data-lucide="refresh-cw"></i>
+                        Reiniciar Sesión
+                    </button>
+                </div>
+            </div>
+
+            <!-- Action Button -->
+            <div class="flex justify-between gap-4 mt-4">
+                <div class="action-button-download flex-1">
+                    <button class="btn btn-primary btn-lg btn-shadow w-full"
+                            onclick="window.open('https://apps.microsoft.com/detail/9P887TN66132?hl=es-es&gl=PE&ocid=pdpshare', '_blank')">
+                        <i class="icon" data-lucide="download"></i>
+                        Descargar el Programa
+                    </button>
+                </div>
+                <div class="action-button flex-1">
+                    <button class="btn btn-primary btn-lg btn-shadow w-full" onclick="iniciarFirmaMasiva()">
+                        <i class="icon" data-lucide="edit"></i>
+                        Firma Masiva
+                    </button>
+                </div>
+            </div>
+            <!-- Table Container -->
+            <div class="card">
+                <div class="card-content">
+                    <!-- Desktop Table -->
+                    <div class="hidden-md">
+                        <table class="table" id="documents-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40%">
+                                        <div class="file-cell">
+                                            <i
+                                                class="file-icon"
+                                                data-lucide="file-text"
+                                            ></i>
+                                            Archivo
+                                        </div>
+                                    </th>
+                                    <th class="text-center">Firma PDF</th>
+                                    <th class="text-center">Configuración</th>
+                                    <th class="text-center">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="documents-body">
+                                <!-- Se llenará con JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Mobile Cards -->
+                    <div
+                        class="visible-md"
+                        id="mobile-documents"
+                        style="padding: 16px"
+                    >
+                        <!-- Se llenará con JavaScript -->
+                    </div>
+                </div>
+            </div>
+            <!-- Panel de Auditoria / Pruebas -->
+            <div class="card mt-4" style="margin-top: 24px;">
+                <details id="test-panel-toggle">
+                    <summary style="cursor: pointer; padding: 16px; font-weight: 600; font-size: 0.95rem; color: var(--slate-700); display: flex; align-items: center; gap: 8px;">
+                        <i data-lucide="flask-conical" style="width:18px; height:18px;"></i>
+                        Auditoria / Pruebas
+                    </summary>
+                    <div style="padding: 0 16px 16px 16px;">
+                        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;">
+                            <div>
+                                <label style="font-size: 0.8rem; color: var(--slate-500); display: block; margin-bottom: 2px;">Modo</label>
+                                <select id="test-mode" style="padding: 8px 12px; border: 1px solid var(--slate-200); border-radius: 0.375rem; font-size: 0.875rem; background: white;">
+                                    <option value="individual">Firma Individual</option>
+                                    <option value="batch">Firma Masiva / Lote</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size: 0.8rem; color: var(--slate-500); display: block; margin-bottom: 2px;">Escenario</label>
+                                <select id="test-scenario" style="padding: 8px 12px; border: 1px solid var(--slate-200); border-radius: 0.375rem; font-size: 0.875rem; background: white; min-width: 240px;">
+                                </select>
+                            </div>
+                            <div style="padding-top: 18px;">
+                                <button class="btn btn-primary btn-sm" id="generate-test-url" onclick="generateTestUrl()">
+                                    <i data-lucide="zap" style="width:14px; height:14px;"></i> Generar
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="test-result" style="display: none;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <span id="test-status" style="font-size: 0.8rem; font-weight: 600; padding: 2px 8px; border-radius: 4px;"></span>
+                                <button class="btn btn-secondary btn-sm" onclick="copyTestUri()" style="font-size: 0.75rem;">
+                                    <i data-lucide="copy" style="width:12px; height:12px;"></i> Copiar URI
+                                </button>
+                            </div>
+                            <div id="test-reason" style="font-size: 0.8rem; color: var(--slate-500); margin-bottom: 8px;"></div>
+                            <textarea id="test-uri" readonly style="width: 100%; min-height: 60px; padding: 8px; font-size: 0.75rem; font-family: monospace; border: 1px solid var(--slate-200); border-radius: 0.375rem; background: var(--slate-50); resize: vertical;"></textarea>
+                            <div id="test-meta" style="margin-top: 8px; font-size: 0.75rem; color: var(--slate-500);"></div>
+                        </div>
+                    </div>
+                </details>
+            </div>
+
+            <!-- Footer -->
+            <div class="footer">
+                <p>© 2024 Firmeasy App - Firma digital segura y confiable</p>
+            </div>
+        </div>
+        <!-- Modal para configuración de firma -->
+        <div id="modal-signature" class="config-modal hidden">
+            <div class="modal-content">
+                <h3>Configuración de Firma</h3>
+                <div id="signature-fields"></div>
+                <div class="modal-actions">
+                    <button class="btn btn-primary" id="save-signature">
+                        Guardar
+                    </button>
+                    <button class="btn btn-secondary" id="close-signature">
+                        Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal para configuración TSA -->
+        <div id="modal-tsa" class="config-modal hidden">
+            <div class="modal-content">
+                <h3>Configuración del Sello de Tiempo (TSA)</h3>
+                <div id="tsa-fields"></div>
+                <div class="modal-actions">
+                    <button class="btn btn-primary" id="save-tsa">
+                        Guardar
+                    </button>
+                    <button class="btn btn-secondary" id="close-tsa">
+                        Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <script src="https://unpkg.com/lucide@latest"></script>
+        <script src="./public/config.js"></script>
+        <script src="./public/userManager.js"></script>
+        <script src="./public/firmamasiva.js"></script>
+        <script src="./public/firmeasyapp.js"></script>
+        <script src="./public/testpanel.js"></script>
+        <script>
+            lucide.createIcons();
+        </script>
+    </body>
+</html>

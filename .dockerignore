@@ -1,0 +1,21 @@
+# Archivos y carpetas comunes a ignorar
+.git
+.gitignore
+node_modules
+vendor
+composer.lock
+.env
+*.log
+*.md
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.bak
+*.swp
+.DS_Store
+docker-compose.yml
+.dockerignore
+tests
+README.md
+signer_keys
