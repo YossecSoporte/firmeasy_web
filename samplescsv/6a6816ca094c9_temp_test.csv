@@ -1,2 +1,0 @@
-urlDescarga,urlSubida,fileName,x,y,width,height,sigText,graphic,page,textSize,sha256
-http://example.com/a.pdf,http://localhost:8080/api.php?op=sign_upload&codigo=test,doc1.pdf,100,200,150,55,Firmado por:,,1,10,abc123
