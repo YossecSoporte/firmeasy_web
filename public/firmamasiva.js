@@ -1,46 +1,139 @@
-document.addEventListener("DOMContentLoaded", () => {
-  const btnMasiva = document.querySelector(".action-button button");
+// document.addEventListener("DOMContentLoaded", () => {
+//   const btnMasiva = document.querySelector(".action-button button");
 
-  if (btnMasiva) {
-    btnMasiva.addEventListener("click", async () => {
-      const firmas = prepararFirmasDesdeJSON();
+//   if (btnMasiva) {
+//     btnMasiva.addEventListener("click", async () => {
+//       const firmas = prepararFirmasDesdeJSON();
 
-      if (firmas.length === 0) {
-        alert("No hay documentos válidos para firmar.");
-        return;
-      }
+//       if (firmas.length === 0) {
+//         alert("No hay documentos válidos para firmar.");
+//         return;
+//       }
 
-      const csvContent = generarCSV(firmas);
+//       const csvContent = generarCSV(firmas);
 
-      try {
-        const { urlDescarga, csvId } = await guardarCSVEnServidor(csvContent);
+//       try {
+//         const { urlDescarga, csvId } = await guardarCSVEnServidor(csvContent);
 
-        // Firmar el batch con Ed25519
-        const signResponse = await fetch(`api.php?op=csv_sign&codigo=${csvId}`, { method: 'POST' });
-        const signData = await signResponse.json();
+//         // Firmar el batch con Ed25519
+//         const signResponse = await fetch(`api.php?op=csv_sign&codigo=${csvId}`, { method: 'POST' });
+//         const signData = await signResponse.json();
 
-        if (!signData.success || !signData.batch?.signed_uri) {
-          throw new Error('No se pudo firmar el batch CSV');
-        }
+//         if (!signData.success || !signData.batch?.signed_uri) {
+//           throw new Error('No se pudo firmar el batch CSV');
+//         }
 
-        // Usar la URI firmada del batch
-        const uri = signData.batch.signed_uri;
+//         // Usar la URI firmada del batch
+//         const uri = signData.batch.signed_uri;
 
-        window.location.href = uri;
-        const userId = UserManager.getUserId();
-        globalDocuments.forEach((doc) => {
-          if (doc.status !== "signed") {
-            startSignaturePollingMulti(doc.codePdf, userId);
-          }
-        });
-      } catch (err) {
-        console.error("Error al firmar CSV:", err);
-        alert("Ocurrió un error al firmar el batch: " + err.message);
+//         window.location.href = uri;
+//         const userId = UserManager.getUserId();
+//         globalDocuments.forEach((doc) => {
+//           if (doc.status !== "signed") {
+//             startSignaturePollingMulti(doc.codePdf, userId);
+//           }
+//         });
+//       } catch (err) {
+//         console.error("Error al firmar CSV:", err);
+//         alert("Ocurrió un error al firmar el batch: " + err.message);
+//       }
+//     });
+//   }
+// });
+async function iniciarFirmaMasiva() {
+  const firmas = prepararFirmasDesdeJSON();
+
+  if (firmas.length === 0) {
+    alert("No hay documentos válidos para firmar.");
+    return;
+  }
+
+  try {
+    const csvContent = generarCSV(firmas);
+
+    const signData = await guardarYFirmarCSV(csvContent);
+
+    if (!signData.success) {
+      throw new Error(
+        signData.error || "No se pudo firmar el batch CSV"
+      );
+    }
+
+    if (!signData.batch?.signed_uri) {
+      throw new Error(
+        signData.signer_error ||
+        "El servidor no devolvió la URI firmada"
+      );
+    }
+
+    const uri = signData.batch.signed_uri;
+    const userId = UserManager.getUserId();
+
+    globalDocuments.forEach((doc) => {
+      if (doc.status !== "signed") {
+        startSignaturePollingMulti(doc.codePdf, userId);
       }
     });
-  }
-});
 
+    window.location.href = uri;
+  } catch (error) {
+    console.error("Error al firmar CSV:", error);
+
+    alert(
+      "Ocurrió un error al firmar el batch: " +
+      error.message
+    );
+  }
+}
+
+window.iniciarFirmaMasiva = iniciarFirmaMasiva;
+
+async function guardarYFirmarCSV(csvContent) {
+  const timestamp = new Date()
+    .toISOString()
+    .replace(/[:.]/g, "-");
+
+  const codigo = `firmas-${timestamp}`;
+
+  const response = await fetch("/api/csv-sign", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      codigo,
+      csvContent,
+    }),
+  });
+
+  const responseText = await response.text();
+
+  let data;
+
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    throw new Error(
+      `Respuesta inválida del servidor: ${responseText}`
+    );
+  }
+
+  if (!response.ok || !data.success) {
+    throw new Error(
+      data.error || `Error HTTP ${response.status}`
+    );
+  }
+
+  if (!data.batch?.signed_uri) {
+    throw new Error(
+      "El servidor no devolvió la URI firmada"
+    );
+  }
+
+  return data;
+}
+
+window.iniciarFirmaMasiva = iniciarFirmaMasiva;
 function prepararFirmasDesdeJSON() {
   const firmas = [];
 

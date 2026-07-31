@@ -267,79 +267,218 @@ if ($method === 'POST' && $op === 'reset') {
 // ====================================
 // POST /api.php?op=csv_upload&csv=ID
 // ====================================
-if ($method === 'POST' && $op === 'csv_upload' && isset($_GET['csv'])) {
-    $csvId = $_GET['csv'];
-    if (!isset($_FILES['csv_file']) || $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK) {
+// if ($method === 'POST' && $op === 'csv_upload' && isset($_GET['csv'])) {
+//     $csvId = $_GET['csv'];
+//     if (!isset($_FILES['csv_file']) || $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK) {
+//         http_response_code(400);
+//         echo json_encode(['error' => 'Archivo no recibido']);
+//         exit;
+//     }
+//     $finfo = new finfo(FILEINFO_MIME_TYPE);
+//     $mime = $finfo->file($_FILES['csv_file']['tmp_name']);
+//     if ($mime !== 'text/plain' && $mime !== 'text/csv') {
+//         http_response_code(415);
+//         echo json_encode(['error' => 'Solo se permiten archivos CSV']);
+//         exit;
+//     }
+//     $name = preg_replace('/[^a-zA-Z0-9\.\-_]/', '', basename($_FILES['csv_file']['name']));
+//     $targetPath = "$csvDir/" . uniqid() . "_$name";
+//     if (move_uploaded_file($_FILES['csv_file']['tmp_name'], $targetPath)) {
+//         $fakeDb["csv_$csvId"] = $targetPath;
+//         file_put_contents($dbFile, json_encode($fakeDb, JSON_PRETTY_PRINT));
+//         http_response_code(201);
+//         echo json_encode([
+//             'success' => true,
+//             'message' => 'CSV subido exitosamente',
+//             'path' => $targetPath,
+//             'id' => $csvId,
+//         ]);
+//     } else {
+//         http_response_code(500);
+//         echo json_encode(['error' => 'Error al guardar el CSV']);
+//     }
+//     exit;
+// }
+if (
+    $method === 'POST' &&
+    $op === 'csv_upload' &&
+    isset($_GET['csv'])
+) {
+    $codigo = basename((string) $_GET['csv']);
+
+    if (!preg_match('/^[a-zA-Z0-9_-]+$/', $codigo)) {
         http_response_code(400);
-        echo json_encode(['error' => 'Archivo no recibido']);
-        exit;
-    }
-    $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $mime = $finfo->file($_FILES['csv_file']['tmp_name']);
-    if ($mime !== 'text/plain' && $mime !== 'text/csv') {
-        http_response_code(415);
-        echo json_encode(['error' => 'Solo se permiten archivos CSV']);
-        exit;
-    }
-    $name = preg_replace('/[^a-zA-Z0-9\.\-_]/', '', basename($_FILES['csv_file']['name']));
-    $targetPath = "$csvDir/" . uniqid() . "_$name";
-    if (move_uploaded_file($_FILES['csv_file']['tmp_name'], $targetPath)) {
-        $fakeDb["csv_$csvId"] = $targetPath;
-        file_put_contents($dbFile, json_encode($fakeDb, JSON_PRETTY_PRINT));
-        http_response_code(201);
         echo json_encode([
-            'success' => true,
-            'message' => 'CSV subido exitosamente',
-            'path' => $targetPath,
-            'id' => $csvId,
+            'success' => false,
+            'error' => 'Código CSV inválido'
         ]);
-    } else {
-        http_response_code(500);
-        echo json_encode(['error' => 'Error al guardar el CSV']);
+        exit;
     }
+
+    if (
+        !isset($_FILES['csv_file']) ||
+        $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK
+    ) {
+        http_response_code(400);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Archivo CSV no recibido'
+        ]);
+        exit;
+    }
+
+    if (!is_dir($csvDir)) {
+        mkdir($csvDir, 0775, true);
+    }
+
+    $csvPath = $csvDir . '/' . $codigo . '.csv';
+
+    if (!move_uploaded_file(
+        $_FILES['csv_file']['tmp_name'],
+        $csvPath
+    )) {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'No se pudo guardar el CSV'
+        ]);
+        exit;
+    }
+
+    echo json_encode([
+        'success' => true,
+        'codigo' => $codigo,
+        'file' => basename($csvPath)
+    ]);
     exit;
 }
 // ====================================
 // GET /api.php?op=csv_download&codigo=ID
 // ====================================
-if ($method === 'GET' && $op === 'csv_download' && isset($_GET['codigo'])) {
-    $codigo = $_GET['codigo'];
-    $key = "csv_$codigo";
-    if (isset($fakeDb[$key])) {
-        $archivo = $fakeDb[$key];
-        if (file_exists($archivo) && is_readable($archivo)) {
-            header('Content-Type: text/csv');
-            header('Content-Disposition: attachment; filename="' . basename($archivo) . '"');
-            header('Content-Length: ' . filesize($archivo));
-            readfile($archivo);
-            exit;
-        }
+// if ($method === 'GET' && $op === 'csv_download' && isset($_GET['codigo'])) {
+//     $codigo = $_GET['codigo'];
+//     $key = "csv_$codigo";
+//     if (isset($fakeDb[$key])) {
+//         $archivo = $fakeDb[$key];
+//         if (file_exists($archivo) && is_readable($archivo)) {
+//             header('Content-Type: text/csv');
+//             header('Content-Disposition: attachment; filename="' . basename($archivo) . '"');
+//             header('Content-Length: ' . filesize($archivo));
+//             readfile($archivo);
+//             exit;
+//         }
+//     }
+//     http_response_code(404);
+//     echo json_encode(['error' => 'CSV no encontrado']);
+//     exit;
+// }
+if (
+    $method === 'GET' &&
+    $op === 'csv_download' &&
+    isset($_GET['codigo'])
+) {
+    $codigo = basename(trim((string) $_GET['codigo']));
+
+    if (
+        $codigo === '' ||
+        !preg_match('/^[a-zA-Z0-9_-]+$/', $codigo)
+    ) {
+        http_response_code(400);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Código CSV inválido',
+        ]);
+        exit;
     }
-    http_response_code(404);
-    echo json_encode(['error' => 'CSV no encontrado']);
+
+    $csvPath = $csvDir . DIRECTORY_SEPARATOR . $codigo . '.csv';
+
+    clearstatcache(true, $csvPath);
+
+    if (!is_file($csvPath) || !is_readable($csvPath)) {
+        http_response_code(404);
+        echo json_encode([
+            'success' => false,
+            'error' => 'CSV no encontrado',
+            'codigo' => $codigo,
+        ]);
+        exit;
+    }
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header(
+        'Content-Disposition: attachment; filename="' .
+        basename($csvPath) .
+        '"'
+    );
+    header('Content-Length: ' . filesize($csvPath));
+
+    readfile($csvPath);
     exit;
 }
 // ====================================
 // POST /api.php?op=csv_sign&codigo=ID
 // Firma Ed25519 el contenido del CSV y retorna batch signature
 // ====================================
+// if ($method === 'POST' && $op === 'csv_sign' && isset($_GET['codigo'])) {
+//     $codigo = $_GET['codigo'];
+//     $key = "csv_$codigo";
+//     if (!isset($fakeDb[$key]) || !file_exists($fakeDb[$key])) {
+//         http_response_code(404);
+//         echo json_encode(['error' => 'CSV no encontrado']);
+//         exit;
+//     }
+
+//     $csvPath = $fakeDb[$key];
 if ($method === 'POST' && $op === 'csv_sign' && isset($_GET['codigo'])) {
-    $codigo = $_GET['codigo'];
-    $key = "csv_$codigo";
-    if (!isset($fakeDb[$key]) || !file_exists($fakeDb[$key])) {
-        http_response_code(404);
-        echo json_encode(['error' => 'CSV no encontrado']);
+    header('Content-Type: application/json; charset=utf-8');
+
+    $codigo = basename(trim((string) $_GET['codigo']));
+
+    if (
+        $codigo === '' ||
+        !preg_match('/^[a-zA-Z0-9_-]+$/', $codigo)
+    ) {
+        http_response_code(400);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Código CSV inválido',
+        ]);
         exit;
     }
 
-    $csvPath = $fakeDb[$key];
+    $csvPath = $csvDir . DIRECTORY_SEPARATOR . $codigo . '.csv';
+
+    clearstatcache(true, $csvPath);
+
+    if (!is_file($csvPath) || !is_readable($csvPath)) {
+        error_log('CSV no encontrado en: ' . $csvPath);
+
+        http_response_code(404);
+        echo json_encode([
+            'success' => false,
+            'error' => 'CSV no encontrado',
+            'codigo' => $codigo,
+            'archivo' => basename($csvPath),
+        ]);
+        exit;
+    }
+    // $csvContent = file_get_contents($csvPath);
+    // if ($csvContent === false) {
+    //     http_response_code(500);
+    //     echo json_encode(['error' => 'No se pudo leer el CSV']);
+    //     exit;
+    // }
     $csvContent = file_get_contents($csvPath);
+
     if ($csvContent === false) {
         http_response_code(500);
-        echo json_encode(['error' => 'No se pudo leer el CSV']);
+        echo json_encode([
+            'success' => false,
+            'error' => 'No se pudo leer el CSV',
+        ]);
         exit;
     }
-
     // SHA-256 del contenido del CSV para firmar
     $csvHash = hash('sha256', $csvContent);
 
@@ -369,6 +508,24 @@ if ($method === 'POST' && $op === 'csv_sign' && isset($_GET['codigo'])) {
         ['exp', (string)$batchExp],
     ];
     $signResult = signUriWithNode($batchParams, $batchKid, $privateKeyPath);
+
+if (
+    !is_array($signResult) ||
+    !empty($signResult['error']) ||
+    empty($signResult['uri'])
+) {
+    http_response_code(500);
+
+    echo json_encode([
+        'success' => false,
+        'error' => 'No se pudo firmar la URI del lote',
+        'signer_error' =>
+            $signResult['error'] ??
+            'El firmador no devolvió una URI',
+    ]);
+
+    exit;
+}
 
     http_response_code(200);
     echo json_encode([

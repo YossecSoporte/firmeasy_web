@@ -5,6 +5,10 @@
       "use": "vercel-php@0.6.2"
     },
     {
+      "src": "api/*.mjs",
+      "use": "@vercel/node"
+    },
+    {
       "src": "index.html",
       "use": "@vercel/static"
     },
@@ -50,6 +54,11 @@
     }
   ],
   "routes": [
+    {
+      "src": "/api/csv-sign",
+      "methods": ["POST"],
+      "dest": "/api/csv-sign.mjs"
+    },
     {
       "src": "/(.*)",
       "dest": "/$1"
